@@ -1,0 +1,125 @@
+#how many Magic booster packs would I have to buy
+#to collect the entire set?
+#That is a coupon collectors problem with a pretty simple
+#approximation.
+coupon <- function(n) {
+  gamma <- 0.5772156649
+  return(n*log(n) + gamma*n + 1/2)
+}
+
+#280 cards in the 2018 standard set
+#10 cards per pack
+#I would have to buy...
+ceiling(coupon(280)/10)
+
+#Thats interesting... 
+
+#How many trials do I need to repeat
+#in order to find one false positive?
+#P(error) = e
+#P(no error) = 1 - e
+#Lets make it a closure so it returns
+#a function where we can tune the error-rate
+p.test <- function(e) {
+  function(m) {
+    1 - (1-e)^m
+  }
+}
+
+f1 <- p.test(.01)
+f2 <- p.test(.02)
+f3 <- p.test(.03)
+
+x <- seq(1,1000)
+
+plot(x,f1(x),col='red')
+
+#The lower the error rate the longer it takes...
+#That is intuitive.
+
+#R does not have a multivariate normal distribution
+#Lets make one.
+
+mnorm <- function(mu, sigma)
+{
+  function(n) {
+    mu1 <- mu[1]
+    
+    mu2 <- mu[2]
+    
+    sigma1 <- Sigma[1,1]
+    
+    sigma2 <- Sigma[2,2]
+    
+    C <- Sigma[1,2]
+    
+    rho <- C/(sigma1*sigma2)
+    
+    Z.1 <- rnorm(n)
+    
+    Z.2 <- rnorm(n)
+    
+    X1 <- sigma1*Z.1 + mu1
+    
+    X2 <- rho*sigma2*Z.1 + sigma2*sqrt(1-rho^2)*Z.2 + mu2
+    
+    return(cbind(X1,X2))
+  }
+}
+
+#I don't want to mask the MASS package mvrnorm...
+#hey... I could have used that instead...
+
+mu = c(0,0)
+
+Sigma = matrix(c(1,.5,.5,1),2)
+
+my.mvnorm <- mnorm(mu,Sigma)
+
+Z <- my.mvnorm(100)
+
+#I could write a density estimator... but it would take too long...
+
+library(MASS)
+
+#I don't need the grid to be especially fine...
+den <- kde2d(x=Z[,1],y=Z[,2], n=100)
+
+image(den)
+
+contour(den, add=TRUE)
+
+#That looks pretty neat.
+#How about some regression. Better yet...
+#How about some Cox Proportional Hazard regression..
+library(survival)
+library(survminer)
+
+df <- read.csv('haberman.data', col.names = c('age', 'operation', 'nodes', 'status'))
+
+hist(df$age,
+     main = 'Distribution of patient age (5 year bins)',
+     prob = TRUE,
+     xlim=c(20,100),
+     xlab = 'Age',
+     col='peachpuff')
+
+lines(density(df$age),
+      col='chocolate',
+      lwd=2)
+
+my.coxph <- coxph(Surv(age, status) ~ operation + nodes, data=df)
+summary(my.coxph)
+#Operations have no signifigant effect on hazard rate. 
+#Nodes, however, does. The more nodes the greater the hazard
+#to ones health.
+#Lets look at the survival plot.
+ggsurvplot(survfit(my.coxph), data=df)
+#Looks good. But I do have a concern. Its hard to know for 
+#certain what role age is playing in this data since
+#age had to be used as the response variable. I'd be willing
+#to bet that had age been apart of the regression we would
+#see it contributing a larger hazard rate. Nodes is also pretty 
+#close to 1 which is just the null hypothesis with a standard
+#error of 0.01. But the model does claim it to be signifigant
+#with a concordance of 0.631. 
